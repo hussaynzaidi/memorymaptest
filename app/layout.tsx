@@ -5,7 +5,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Interactive Map Prototype',
+  title: 'COMSATS Yaadein',
   description: 'A web-based interactive map using Leaflet.js and Next.js',
 }
 

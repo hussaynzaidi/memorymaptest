@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import { MAP_CONFIG } from '../config/mapConfig'
+import { createMemory, getMemories, type Memory } from '../utils/memories'
 
 // Types for our marker data
 interface MarkerData {
@@ -12,9 +13,6 @@ interface MarkerData {
   comment: string
   timestamp: number
 }
-
-// Local storage key for markers
-const STORAGE_KEY = 'interactive-map-markers'
 
 export default function InteractiveMap() {
   const mapRef = useRef<HTMLDivElement>(null)
@@ -89,8 +87,8 @@ export default function InteractiveMap() {
       setCurrentZoom(map.getZoom())
     })
 
-    // Load existing markers from localStorage
-    loadMarkersFromStorage()
+    // Load existing markers from Supabase
+    loadMarkersFromSupabase()
 
     // Add click event listener for adding new markers
     map.on('click', handleMapClick)
@@ -104,17 +102,22 @@ export default function InteractiveMap() {
     }
   }, [])
 
-  // Load markers from localStorage
-  const loadMarkersFromStorage = () => {
+  // Load markers from Supabase
+  const loadMarkersFromSupabase = async () => {
     try {
-      const storedMarkers = localStorage.getItem(STORAGE_KEY)
-      if (storedMarkers) {
-        const parsedMarkers: MarkerData[] = JSON.parse(storedMarkers)
-        setMarkers(parsedMarkers)
-        addMarkersToMap(parsedMarkers)
-      }
+      const memories = await getMemories()
+      const markerData: MarkerData[] = memories.map(memory => ({
+        id: memory.id || Date.now().toString(),
+        lat: memory.lat,
+        lng: memory.lng,
+        comment: memory.comment,
+        timestamp: memory.created_at ? new Date(memory.created_at).getTime() : Date.now(),
+        supabaseId: memory.id
+      }))
+      setMarkers(markerData)
+      addMarkersToMap(markerData)
     } catch (error) {
-      console.error('Error loading markers from localStorage:', error)
+      console.error('Error loading markers from Supabase:', error)
     }
   }
 
@@ -170,7 +173,7 @@ export default function InteractiveMap() {
       return
     }
 
-    // Create new marker data
+    // Create new marker data (temporary, will be saved to Supabase when comment is added)
     const newMarker: MarkerData = {
       id: Date.now().toString(),
       lat,
@@ -179,10 +182,9 @@ export default function InteractiveMap() {
       timestamp: Date.now()
     }
 
-    // Add to state and localStorage
+    // Add to state temporarily
     const updatedMarkers = [...markers, newMarker]
     setMarkers(updatedMarkers)
-    saveMarkersToStorage(updatedMarkers)
 
     // Add marker to map and open popup
     addMarkersToMap([newMarker], true)
@@ -199,92 +201,154 @@ export default function InteractiveMap() {
     container.style.minWidth = isMobile ? '250px' : '180px'
     container.style.maxWidth = isMobile ? '280px' : '300px'
 
-    const textarea = document.createElement('textarea')
-    textarea.placeholder = 'Add your memory...'
-    textarea.value = marker.comment
-    textarea.style.width = '100%'
-    textarea.style.minHeight = isMobile ? '60px' : '50px'
-    textarea.style.padding = isMobile ? '14px' : '12px'
-    textarea.style.border = '2px solid #e5e7eb'
-    textarea.style.borderRadius = '0'
-    textarea.style.resize = 'vertical'
-    textarea.style.fontFamily = 'system-ui, -apple-system, sans-serif'
-    textarea.style.fontSize = isMobile ? '14px' : '12px'
-    textarea.style.lineHeight = isMobile ? '1.4' : '1.2'
-    textarea.style.outline = 'none'
-    textarea.style.transition = 'border-color 0.2s ease'
+    // Check if this is a saved marker (has a comment already)
+    const isExistingMarker = marker.comment.trim() !== ''
 
-    // Focus and blur effects
-    textarea.addEventListener('focus', () => {
-      textarea.style.borderColor = '#3b82f6'
-    })
-    textarea.addEventListener('blur', () => {
-      textarea.style.borderColor = '#e5e7eb'
-    })
+    if (isExistingMarker) {
+      // Read-only view for existing markers
+      const commentDisplay = document.createElement('div')
+      commentDisplay.textContent = marker.comment
+      commentDisplay.style.width = '100%'
+      commentDisplay.style.minHeight = isMobile ? '60px' : '50px'
+      commentDisplay.style.padding = isMobile ? '14px' : '12px'
+      commentDisplay.style.border = '2px solid #e5e7eb'
+      commentDisplay.style.borderRadius = '0'
+      commentDisplay.style.fontFamily = 'system-ui, -apple-system, sans-serif'
+      commentDisplay.style.fontSize = isMobile ? '14px' : '12px'
+      commentDisplay.style.lineHeight = isMobile ? '1.4' : '1.2'
+      commentDisplay.style.backgroundColor = '#f9fafb'
+      commentDisplay.style.color = '#374151'
+      commentDisplay.style.whiteSpace = 'pre-wrap'
+      commentDisplay.style.wordWrap = 'break-word'
 
-    const saveButton = document.createElement('button')
-    saveButton.textContent = 'Save memory'
-    saveButton.style.marginTop = isMobile ? '14px' : '12px'
-    saveButton.style.padding = isMobile ? '12px 24px' : '10px 20px'
-    saveButton.style.backgroundColor = '#3b82f6'
-    saveButton.style.color = 'white'
-    saveButton.style.border = 'none'
-    saveButton.style.borderRadius = '0'
-    saveButton.style.cursor = 'pointer'
-    saveButton.style.fontFamily = 'system-ui, -apple-system, sans-serif'
-    saveButton.style.fontSize = isMobile ? '14px' : '12px'
-    saveButton.style.fontWeight = '500'
-    saveButton.style.transition = 'background-color 0.2s ease'
-    saveButton.style.width = '100%'
-    saveButton.style.minHeight = isMobile ? '44px' : 'auto'
+      // const readOnlyLabel = document.createElement('div')
+      // readOnlyLabel.textContent = 'Memory (read-only)'
+      // readOnlyLabel.style.fontSize = isMobile ? '12px' : '10px'
+      // readOnlyLabel.style.color = '#6b7280'
+      // readOnlyLabel.style.marginBottom = '8px'
+      // readOnlyLabel.style.fontWeight = '500'
 
-    // Hover effect
-    saveButton.addEventListener('mouseenter', () => {
-      saveButton.style.backgroundColor = '#2563eb'
-    })
-    saveButton.addEventListener('mouseleave', () => {
+      // container.appendChild(readOnlyLabel)
+      container.appendChild(commentDisplay)
+    } else {
+      // Editable view for new markers
+      const textarea = document.createElement('textarea')
+      textarea.placeholder = 'Add your memory...'
+      textarea.value = marker.comment
+      textarea.style.width = '100%'
+      textarea.style.minHeight = isMobile ? '60px' : '50px'
+      textarea.style.padding = isMobile ? '14px' : '12px'
+      textarea.style.border = '2px solid #e5e7eb'
+      textarea.style.borderRadius = '0'
+      textarea.style.resize = 'vertical'
+      textarea.style.fontFamily = 'system-ui, -apple-system, sans-serif'
+      textarea.style.fontSize = isMobile ? '14px' : '12px'
+      textarea.style.lineHeight = isMobile ? '1.4' : '1.2'
+      textarea.style.outline = 'none'
+      textarea.style.transition = 'border-color 0.2s ease'
+
+      // Focus and blur effects
+      textarea.addEventListener('focus', () => {
+        textarea.style.borderColor = '#3b82f6'
+      })
+      textarea.addEventListener('blur', () => {
+        textarea.style.borderColor = '#e5e7eb'
+      })
+
+      const saveButton = document.createElement('button')
+      saveButton.textContent = 'Save memory'
+      saveButton.style.marginTop = isMobile ? '14px' : '12px'
+      saveButton.style.padding = isMobile ? '12px 24px' : '10px 20px'
       saveButton.style.backgroundColor = '#3b82f6'
-    })
+      saveButton.style.color = 'white'
+      saveButton.style.border = 'none'
+      saveButton.style.borderRadius = '0'
+      saveButton.style.cursor = 'pointer'
+      saveButton.style.fontFamily = 'system-ui, -apple-system, sans-serif'
+      saveButton.style.fontSize = isMobile ? '14px' : '12px'
+      saveButton.style.fontWeight = '500'
+      saveButton.style.transition = 'background-color 0.2s ease'
+      saveButton.style.width = '100%'
+      saveButton.style.minHeight = isMobile ? '44px' : 'auto'
 
-    // Handle save button click
-    saveButton.onclick = () => {
-      const updatedMarkers = markers.map(m => 
-        m.id === marker.id 
-          ? { ...m, comment: textarea.value }
-          : m
-      )
-      setMarkers(updatedMarkers)
-      saveMarkersToStorage(updatedMarkers)
-      leafletMarker.closePopup()
-    }
+      // Hover effect
+      saveButton.addEventListener('mouseenter', () => {
+        saveButton.style.backgroundColor = '#2563eb'
+      })
+      saveButton.addEventListener('mouseleave', () => {
+        saveButton.style.backgroundColor = '#3b82f6'
+      })
 
-    container.appendChild(textarea)
-    container.appendChild(saveButton)
+      // Handle save button click
+      saveButton.onclick = async () => {
+        const comment = textarea.value.trim()
+        
+        if (comment === '') {
+          alert('Please enter a memory before saving.')
+          return
+        }
 
-    // Remove marker if popup is closed without a comment
-    leafletMarker.on('popupclose', () => {
-      if (textarea.value.trim() === '') {
-        mapInstanceRef.current?.removeLayer(leafletMarker)
-        markersRef.current = markersRef.current.filter(m => m !== leafletMarker)
-        const updatedMarkers = markers.filter(m => m.id !== marker.id)
-        setMarkers(updatedMarkers)
-        saveMarkersToStorage(updatedMarkers)
+        // Disable button while saving
+        saveButton.disabled = true
+        saveButton.textContent = 'Saving...'
+        saveButton.style.backgroundColor = '#6b7280'
+
+        try {
+          // Save to Supabase
+          const savedMemory = await createMemory({
+            comment,
+            lat: marker.lat,
+            lng: marker.lng
+          })
+
+          if (savedMemory) {
+            // Update marker with Supabase data
+            const updatedMarkers = markers.map(m => 
+              m.id === marker.id 
+                ? { 
+                    ...m, 
+                    comment,
+                    timestamp: savedMemory.created_at ? new Date(savedMemory.created_at).getTime() : Date.now()
+                  }
+                : m
+            )
+            setMarkers(updatedMarkers)
+            leafletMarker.closePopup()
+          } else {
+            alert('Failed to save memory. Please try again.')
+          }
+        } catch (error) {
+          console.error('Error saving memory:', error)
+          alert('Failed to save memory. Please try again.')
+        } finally {
+          // Re-enable button
+          saveButton.disabled = false
+          saveButton.textContent = 'Save memory'
+          saveButton.style.backgroundColor = '#3b82f6'
+        }
       }
-    })
+
+      container.appendChild(textarea)
+      container.appendChild(saveButton)
+
+      // Remove marker if popup is closed without a comment (only for new markers)
+      leafletMarker.on('popupclose', () => {
+        if (textarea.value.trim() === '') {
+          mapInstanceRef.current?.removeLayer(leafletMarker)
+          markersRef.current = markersRef.current.filter(m => m !== leafletMarker)
+          const updatedMarkers = markers.filter(m => m.id !== marker.id)
+          setMarkers(updatedMarkers)
+        }
+      })
+    }
 
     return container
   }
 
-  // Save markers to localStorage
-  const saveMarkersToStorage = (markerData: MarkerData[]) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(markerData))
-    } catch (error) {
-      console.error('Error saving markers to localStorage:', error)
-    }
-  }
+  // Note: Markers are now saved directly to Supabase when created/updated
+  // No need for separate storage function
 
-  // Clear all markers
+  // Clear all markers (visual only - doesn't delete from database)
   const clearAllMarkers = () => {
     if (mapInstanceRef.current) {
       markersRef.current.forEach(marker => {
@@ -293,7 +357,6 @@ export default function InteractiveMap() {
       markersRef.current = []
     }
     setMarkers([])
-    localStorage.removeItem(STORAGE_KEY)
   }
 
   return (
