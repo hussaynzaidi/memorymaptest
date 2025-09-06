@@ -12,6 +12,7 @@ interface MarkerData {
   lng: number
   comment: string
   timestamp: number
+  saved?: boolean
 }
 
 export default function InteractiveMap() {
@@ -20,6 +21,24 @@ export default function InteractiveMap() {
   const markersRef = useRef<L.Marker[]>([])
   const [markers, setMarkers] = useState<MarkerData[]>([])
   const [currentZoom, setCurrentZoom] = useState(MAP_CONFIG.zoom) // State to hold current zoom level
+
+  // Helper: for UNSAVED markers, closing the popup should discard the marker
+  // Returns a function to detach this behavior (used after a successful save)
+  const attachRemoveOnClose = (
+    leafletMarker: L.Marker,
+    _textarea: HTMLTextAreaElement,
+    markerId: string
+  ): (() => void) => {
+    const handler = () => {
+      // Always remove the temporary marker when popup closes (unless detached)
+      mapInstanceRef.current?.removeLayer(leafletMarker)
+      markersRef.current = markersRef.current.filter(m => m !== leafletMarker)
+      const updatedMarkers = markers.filter(m => m.id !== markerId)
+      setMarkers(updatedMarkers)
+    }
+    leafletMarker.on('popupclose', handler)
+    return () => leafletMarker.off('popupclose', handler)
+  }
 
   // Initialize map on component mount
   useEffect(() => {
@@ -41,7 +60,7 @@ export default function InteractiveMap() {
 
     // Add ArcGIS World Imagery basemap
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+      attribution: 'Source: Esri',
       maxZoom: 19 // Increased maxZoom to match map instance
     }).addTo(map)
 
@@ -64,16 +83,16 @@ export default function InteractiveMap() {
     const maskPolygon = L.polygon(maskCoords, {
       color: 'white',
       fillColor: 'white',
-      fillOpacity: 0.85,
+      fillOpacity: 0.90,
       weight: 0,
       interactive: false, // Make it non-interactive so clicks pass through
       className: 'blurred-overlay' // Add CSS class for blur effect
     }).addTo(map)
 
-    // Add the visible polygon boundary
+    // Add the visible polygon boundary (white outline)
     const visiblePolygon = L.polygon(polygonCoords, {
-      color: '#333',
-      weight: 2,
+      color: 'white',
+      weight: 3,
       fillOpacity: 0,
       interactive: false
     }).addTo(map)
@@ -112,7 +131,7 @@ export default function InteractiveMap() {
         lng: memory.lng,
         comment: memory.comment,
         timestamp: memory.created_at ? new Date(memory.created_at).getTime() : Date.now(),
-        supabaseId: memory.id
+        saved: true
       }))
       setMarkers(markerData)
       addMarkersToMap(markerData)
@@ -137,7 +156,13 @@ export default function InteractiveMap() {
 
       // Create popup with comment
       const popupContent = createPopupContent(marker, leafletMarker)
-      leafletMarker.bindPopup(popupContent)
+      // Allow wider content and attach a class to the popup wrapper
+      leafletMarker.bindPopup(popupContent, {
+        maxWidth: 420,
+        minWidth: 220,
+        className: 'custom-popup',
+        offset: L.point(0, -20) // lift popup above marker so location stays visible
+      })
 
       if (openPopup) {
         leafletMarker.openPopup()
@@ -151,16 +176,16 @@ export default function InteractiveMap() {
   const isPointInPolygon = (lat: number, lng: number): boolean => {
     const polygon = MAP_CONFIG.polygonBounds
     let inside = false
-    
+
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
       const xi = polygon[i][0], yi = polygon[i][1]
       const xj = polygon[j][0], yj = polygon[j][1]
-      
+
       if (((yi > lat) !== (yj > lat)) && (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi)) {
         inside = !inside
       }
     }
-    
+
     return inside
   }
 
@@ -179,7 +204,8 @@ export default function InteractiveMap() {
       lat,
       lng,
       comment: '',
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      saved: false
     }
 
     // Add to state temporarily
@@ -192,106 +218,57 @@ export default function InteractiveMap() {
 
   // Create popup content for marker
   const createPopupContent = (marker: MarkerData, leafletMarker: L.Marker) => {
-    const container = document.createElement('div')
-    container.className = 'custom-popup'
-    container.style.fontFamily = 'system-ui, -apple-system, sans-serif'
-    
     // Responsive width based on screen size
     const isMobile = window.innerWidth <= 768
-    container.style.minWidth = isMobile ? '250px' : '180px'
-    container.style.maxWidth = isMobile ? '280px' : '300px'
+
+    // Create content area
+    const dialogContent = document.createElement('div')
+    dialogContent.className = `dialog-content${isMobile ? ' mobile' : ''}`
 
     // Check if this is a saved marker (has a comment already)
-    const isExistingMarker = marker.comment.trim() !== ''
+    const isExistingMarker = marker.saved === true
 
     if (isExistingMarker) {
-      // Read-only view for existing markers
-      const commentDisplay = document.createElement('div')
-      commentDisplay.textContent = marker.comment
-      commentDisplay.style.width = '100%'
-      commentDisplay.style.minHeight = isMobile ? '60px' : '50px'
-      commentDisplay.style.padding = isMobile ? '14px' : '12px'
-      commentDisplay.style.border = '2px solid #e5e7eb'
-      commentDisplay.style.borderRadius = '0'
-      commentDisplay.style.fontFamily = 'system-ui, -apple-system, sans-serif'
-      commentDisplay.style.fontSize = isMobile ? '14px' : '12px'
-      commentDisplay.style.lineHeight = isMobile ? '1.4' : '1.2'
-      commentDisplay.style.backgroundColor = '#f9fafb'
-      commentDisplay.style.color = '#374151'
-      commentDisplay.style.whiteSpace = 'pre-wrap'
-      commentDisplay.style.wordWrap = 'break-word'
-
-      // const readOnlyLabel = document.createElement('div')
-      // readOnlyLabel.textContent = 'Memory (read-only)'
-      // readOnlyLabel.style.fontSize = isMobile ? '12px' : '10px'
-      // readOnlyLabel.style.color = '#6b7280'
-      // readOnlyLabel.style.marginBottom = '8px'
-      // readOnlyLabel.style.fontWeight = '500'
-
-      // container.appendChild(readOnlyLabel)
-      container.appendChild(commentDisplay)
+      // Add memory text for existing markers
+      const memoryText = document.createElement('p')
+      memoryText.className = `memory-text${isMobile ? ' mobile' : ''}`
+      memoryText.textContent = marker.comment
+      dialogContent.appendChild(memoryText)
     } else {
-      // Editable view for new markers
+      const inputWrapper = document.createElement('div')
+      inputWrapper.className = `input-wrapper${isMobile ? ' mobile' : ''}`
+      // Add textarea and save button for new markers
       const textarea = document.createElement('textarea')
-      textarea.placeholder = 'Add your memory...'
+      textarea.className = `memory-textarea${isMobile ? ' mobile' : ''}`
+      textarea.placeholder = 'Tell us about a memory (20 characters min)...'
       textarea.value = marker.comment
-      textarea.style.width = '100%'
-      textarea.style.minHeight = isMobile ? '60px' : '50px'
-      textarea.style.padding = isMobile ? '14px' : '12px'
-      textarea.style.border = '2px solid #e5e7eb'
-      textarea.style.borderRadius = '0'
-      textarea.style.resize = 'vertical'
-      textarea.style.fontFamily = 'system-ui, -apple-system, sans-serif'
-      textarea.style.fontSize = isMobile ? '14px' : '12px'
-      textarea.style.lineHeight = isMobile ? '1.4' : '1.2'
-      textarea.style.outline = 'none'
-      textarea.style.transition = 'border-color 0.2s ease'
-
-      // Focus and blur effects
-      textarea.addEventListener('focus', () => {
-        textarea.style.borderColor = '#3b82f6'
-      })
-      textarea.addEventListener('blur', () => {
-        textarea.style.borderColor = '#e5e7eb'
-      })
 
       const saveButton = document.createElement('button')
+      saveButton.className = `save-memory-btn${isMobile ? ' mobile' : ''}`
       saveButton.textContent = 'Save memory'
-      saveButton.style.marginTop = isMobile ? '14px' : '12px'
-      saveButton.style.padding = isMobile ? '12px 24px' : '10px 20px'
-      saveButton.style.backgroundColor = '#3b82f6'
-      saveButton.style.color = 'white'
-      saveButton.style.border = 'none'
-      saveButton.style.borderRadius = '0'
-      saveButton.style.cursor = 'pointer'
-      saveButton.style.fontFamily = 'system-ui, -apple-system, sans-serif'
-      saveButton.style.fontSize = isMobile ? '14px' : '12px'
-      saveButton.style.fontWeight = '500'
-      saveButton.style.transition = 'background-color 0.2s ease'
-      saveButton.style.width = '100%'
-      saveButton.style.minHeight = isMobile ? '44px' : 'auto'
+      // Disable until minimum length reached
+      saveButton.disabled = textarea.value.trim().length < 20
 
-      // Hover effect
-      saveButton.addEventListener('mouseenter', () => {
-        saveButton.style.backgroundColor = '#2563eb'
+      // Enable/disable button based on input length
+      textarea.addEventListener('input', () => {
+        const len = textarea.value.trim().length
+        saveButton.disabled = len < 20
       })
-      saveButton.addEventListener('mouseleave', () => {
-        saveButton.style.backgroundColor = '#3b82f6'
-      })
+
+      // Attach auto-remove on popup close for UNSAVED marker
+      let detachOnClose = attachRemoveOnClose(leafletMarker, textarea, marker.id)
 
       // Handle save button click
       saveButton.onclick = async () => {
         const comment = textarea.value.trim()
-        
-        if (comment === '') {
-          alert('Please enter a memory before saving.')
+
+        if (comment.length < 20) {
           return
         }
 
         // Disable button while saving
         saveButton.disabled = true
         saveButton.textContent = 'Saving...'
-        saveButton.style.backgroundColor = '#6b7280'
 
         try {
           // Save to Supabase
@@ -303,16 +280,18 @@ export default function InteractiveMap() {
 
           if (savedMemory) {
             // Update marker with Supabase data
-            const updatedMarkers = markers.map(m => 
-              m.id === marker.id 
-                ? { 
-                    ...m, 
-                    comment,
-                    timestamp: savedMemory.created_at ? new Date(savedMemory.created_at).getTime() : Date.now()
-                  }
+            const updatedMarkers = markers.map(m =>
+              m.id === marker.id
+                ? {
+                  ...m,
+                  comment,
+                  timestamp: savedMemory.created_at ? new Date(savedMemory.created_at).getTime() : Date.now(),
+                  saved: true
+                }
                 : m
             )
             setMarkers(updatedMarkers)
+            detachOnClose()
             leafletMarker.closePopup()
           } else {
             alert('Failed to save memory. Please try again.')
@@ -324,102 +303,19 @@ export default function InteractiveMap() {
           // Re-enable button
           saveButton.disabled = false
           saveButton.textContent = 'Save memory'
-          saveButton.style.backgroundColor = '#3b82f6'
         }
       }
 
-      container.appendChild(textarea)
-      container.appendChild(saveButton)
-
-      // Remove marker if popup is closed without a comment (only for new markers)
-      leafletMarker.on('popupclose', () => {
-        if (textarea.value.trim() === '') {
-          mapInstanceRef.current?.removeLayer(leafletMarker)
-          markersRef.current = markersRef.current.filter(m => m !== leafletMarker)
-          const updatedMarkers = markers.filter(m => m.id !== marker.id)
-          setMarkers(updatedMarkers)
-        }
-      })
+      inputWrapper.appendChild(textarea)
+      inputWrapper.appendChild(saveButton)
+      dialogContent.appendChild(inputWrapper)
     }
-
-    return container
-  }
-
-  // Note: Markers are now saved directly to Supabase when created/updated
-  // No need for separate storage function
-
-  // Clear all markers (visual only - doesn't delete from database)
-  const clearAllMarkers = () => {
-    if (mapInstanceRef.current) {
-      markersRef.current.forEach(marker => {
-        mapInstanceRef.current!.removeLayer(marker)
-      })
-      markersRef.current = []
-    }
-    setMarkers([])
+    // Return dialog content directly; styling is handled by Leaflet popup class and CSS
+    return dialogContent
   }
 
   return (
     <div className="map-container">
-      {/* Add CSS for blur effect and popup styling */}
-      <style jsx>{`
-        .map-container :global(.blurred-overlay) {
-          filter: blur(8px);
-          backdrop-filter: blur(10px);
-        }
-        .map-container :global(.leaflet-popup-content-wrapper) {
-          border-radius: 0 !important;
-        }
-        .map-container :global(.leaflet-popup-tip) {
-          display: none !important;
-        }
-        
-        /* Responsive popup adjustments */
-        @media (max-width: 768px) {
-          .map-container :global(.leaflet-popup-content-wrapper) {
-            max-width: 90vw !important;
-            margin: 0 auto !important;
-          }
-          .map-container :global(.leaflet-popup-content) {
-            margin: 8px !important;
-          }
-        }
-        
-        /* Ensure map container is responsive */
-        .map-container {
-          width: 100%;
-          height: 100vh;
-          position: relative;
-        }
-        
-        @media (max-width: 768px) {
-          .map-container {
-            height: 100vh;
-          }
-        }
-      `}</style>
-      
-      {/* Instructions Panel */}
-      {/*<div className="instructions">
-        <h3>Interactive Map</h3>
-        <p>📍 Click anywhere on the map to add a marker</p>
-        <button 
-          onClick={clearAllMarkers}
-          style={{
-            marginTop: '10px',
-            padding: '5px 10px',
-            backgroundColor: '#dc3545',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontSize: '12px'
-          }}
-        >
-          Clear All Markers
-        </button>
-      </div> */}
-
       {/* Zoom Level Display */}
       <div className="zoom-level-display" style={{
         position: 'absolute',

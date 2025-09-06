@@ -39,35 +39,190 @@ body {
 
 /* Custom popup styles */
 .custom-popup {
-  min-width: 200px;
+  font-family: system-ui, -apple-system, sans-serif;
 }
 
+.custom-popup .leaflet-popup-content-wrapper {
+  height: auto;
+  max-height: none;
+}
 .custom-popup .leaflet-popup-content {
-  margin: 8px 12px;
-}
-
-.custom-popup textarea {
+  margin: 0px 4px;
+  padding: 0; /* ensure no inner padding pushes content down */
   width: 100%;
-  min-height: 60px;
-  padding: 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  resize: vertical;
-  font-family: inherit;
+  box-sizing: border-box;
+  box-sizing: border-box;
+  height: auto;
+  max-height: none;
+  overflow: visible;
 }
 
-.custom-popup button {
-  margin-top: 8px;
-  padding: 6px 12px;
-  background-color: #007bff;
+/* Map container styles */
+.map-container {
+  width: 100%;
+  height: 100vh;
+  position: relative;
+}
+
+.map-container .blurred-overlay {
+  filter: blur(8px);
+  backdrop-filter: blur(10px);
+}
+
+.map-container .leaflet-popup-content-wrapper {
+  border-radius: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+}
+
+.map-container .leaflet-popup-tip {
+  display: none !important;
+}
+
+/* Zoom level display */
+.zoom-level-display {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #333;
+  z-index: 1000;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .map-container {
+    height: 100vh;
+  }
+  
+  .map-container .leaflet-popup-content-wrapper {
+    max-width: 90vw !important;
+    margin: 0 auto !important;
+    height: auto !important;
+  }
+  
+  .map-container .leaflet-popup-content {
+    margin: 8px !important;
+  }
+}
+
+/* Unified popup dialog */
+.popup-dialog {
+  position: relative;
+  max-width: 300px;
+}
+
+.popup-dialog.mobile {
+  max-width: 280px;
+}
+
+
+.dialog-content {
+  padding-top: 0;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start; /* top */
+  align-items: flex-start;     /* left */
+  height: auto;                /* fit to content */
+  max-height: none;            /* remove any constraints */
+  overflow: visible;
+}
+
+.input-wrapper {
+  display: flex;
+  width: 93%;
+  flex-direction: column;
+}
+
+.memory-text {
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  width: 100%;
+  line-height: 1.4;
+  color: #374151;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0; /* remove default <p> margins */
+  text-align: left; /* left-align text */
+  align-self: flex-start; /* align to left within flex parent */
+  box-sizing: border-box; /* include border in width calc */
+}
+
+.memory-text.mobile {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Editable textarea */
+.memory-textarea {
+  width: 100%;
+  margin-top: 16px;
+  min-height: 50px;
+  padding: 6px;
+  border: 2px solid #0a2b6e;
+  border-radius: 0;
+  resize: vertical;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  line-height: 1.2;
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.memory-textarea.mobile {
+  min-height: 60px;
+  padding: 6px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.memory-textarea:focus {
+  border-color: #1a48ac;
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.3);
+}
+
+.memory-textarea:blur {
+  border-color: #e5e7eb;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Save button */
+.save-memory-btn {
+  margin-top: 12px;
+  margin-bottom: 6px;
+  padding: 10px 20px;
+  background-color: #3b82f6;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   cursor: pointer;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  font-weight: 400;
+  transition: background-color 0.2s ease;
+  width: 100%;
 }
 
-.custom-popup button:hover {
-  background-color: #0056b3;
+.save-memory-btn.mobile {
+  margin-top: 14px;
+  padding: 12px 24px;
+  font-size: 12px;
+  min-height: 44px;
+}
+
+.save-memory-btn:hover {
+  background-color: #0e358b;
+}
+
+.save-memory-btn:disabled {
+  background-color: #6b7280;
+  cursor: not-allowed;
 }
 
 /* Attribution styles */
@@ -75,6 +230,7 @@ body {
   position: absolute;
   bottom: 10px;
   right: 10px;
+  opacity: 0.2;
   background: rgba(255, 255, 255, 0.8);
   padding: 5px 10px;
   border-radius: 4px;
